@@ -1,17 +1,19 @@
 {
-  "name": "teddypups-uae-local",
+  "name": "teddypups-uae",
   "version": "1.0.0",
-  "description": "TeddyPups U.A.E. local web server",
+  "description": "TeddyPups U.A.E. — Premium teacup & miniature puppies in Dubai (Static Web Platform)",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js",
-    "sync": "node scripts/sync_all.js"
+    "preview": "npx serve .",
+    "build": "node scripts/clean_and_format_html.js"
   },
   "keywords": [
     "teddypups",
-    "local-server"
+    "puppy-adoption",
+    "static-site",
+    "netlify"
   ],
-  "author": "",
-  "license": "ISC"
+  "author": "TeddyPups U.A.E.",
+  "license": "MIT"
 }

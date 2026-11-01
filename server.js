@@ -6,16 +6,8 @@ const url = require('url');
 const DEFAULT_PORT = parseInt(process.env.PORT || '3001', 10);
 const HOST = '0.0.0.0';
 
-// Base directory to serve files from
+// Base directory to serve files from (project root)
 const ROOT_DIR = __dirname;
-const SITE_DIR = fs.existsSync(path.join(ROOT_DIR, 'puppy.instabizweb.com'))
-  ? path.join(ROOT_DIR, 'puppy.instabizweb.com')
-  : ROOT_DIR;
-
-const CACHE_DIR = path.join(SITE_DIR, '_next_image_cache');
-if (!fs.existsSync(CACHE_DIR)) {
-  fs.mkdirSync(CACHE_DIR, { recursive: true });
-}
 
 // MIME types map
 const MIME_TYPES = {
@@ -29,6 +21,7 @@ const MIME_TYPES = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
   '.webp': 'image/webp',
+  '.avif': 'image/avif',
   '.gif': 'image/gif',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
@@ -86,48 +79,17 @@ function serveFileWithRange(req, res, filePath, contentType) {
 }
 
 // Handle Next.js image endpoint: /_next/image?url=...&w=...&q=...
-async function handleNextImage(req, res, parsedUrl) {
-  const fullReqUrl = req.url;
-  const safeName = Buffer.from(fullReqUrl).toString('base64url') + '.webp';
-  const cachedFilePath = path.join(CACHE_DIR, safeName);
-
-  // 1. If already in disk cache, serve it immediately
-  if (fs.existsSync(cachedFilePath)) {
-    return serveFileWithRange(req, res, cachedFilePath, 'image/webp');
-  }
-
-  // 2. Check if the raw image exists locally in site directory
+function handleNextImage(req, res, parsedUrl) {
   const imageParam = parsedUrl.query.url;
   if (imageParam) {
     const decodedUrl = decodeURIComponent(imageParam);
-    const localDirectPath = path.join(SITE_DIR, decodedUrl.replace(/^\//, ''));
+    const localDirectPath = path.join(ROOT_DIR, decodedUrl.replace(/^\//, ''));
     if (fs.existsSync(localDirectPath) && fs.statSync(localDirectPath).isFile()) {
       return serveFileWithRange(req, res, localDirectPath, getContentType(localDirectPath));
     }
   }
 
-  // 3. Fallback: proxy fetch from the live origin and cache for offline use
-  try {
-    const remoteUrl = 'https://puppy.instabizweb.com' + fullReqUrl;
-    console.log(`[Proxy] Fetching image from remote: ${remoteUrl}`);
-    const remoteRes = await fetch(remoteUrl);
-    if (remoteRes.ok) {
-      const buffer = Buffer.from(await remoteRes.arrayBuffer());
-      fs.writeFileSync(cachedFilePath, buffer);
-      const cType = remoteRes.headers.get('content-type') || 'image/webp';
-      res.writeHead(200, {
-        'Content-Type': cType,
-        'Content-Length': buffer.length,
-        'Cache-Control': 'public, max-age=31536000, immutable',
-        'Access-Control-Allow-Origin': '*'
-      });
-      return res.end(buffer);
-    }
-  } catch (err) {
-    console.warn(`[Warning] Could not fetch remote image for ${fullReqUrl}:`, err.message);
-  }
-
-  // 4. Fallback 1x1 transparent PNG if image not found
+  // Fallback 1x1 transparent PNG if image not found
   const emptyPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
   res.writeHead(200, {
     'Content-Type': 'image/png',
@@ -137,7 +99,7 @@ async function handleNextImage(req, res, parsedUrl) {
 }
 
 // Main HTTP request handler
-const server = http.createServer(async (req, res) => {
+const server = http.createServer((req, res) => {
   const parsedUrl = url.parse(req.url, true);
   let pathname = decodeURIComponent(parsedUrl.pathname);
 
@@ -165,10 +127,10 @@ const server = http.createServer(async (req, res) => {
 
   // Handle explicit .rsc extension requests
   if (pathname.endsWith('.rsc')) {
-    const rawRoute = pathname.slice(0, -4); // e.g. /puppies or /happy-families
-    const candidateRsc1 = path.join(SITE_DIR, rawRoute.replace(/^\//, ''), 'page.rsc');
-    const candidateRsc2 = path.join(SITE_DIR, rawRoute.replace(/^\//, '') + '.rsc');
-    const candidateRsc3 = path.join(SITE_DIR, pathname.replace(/^\//, ''));
+    const rawRoute = pathname.slice(0, -4);
+    const candidateRsc1 = path.join(ROOT_DIR, rawRoute.replace(/^\//, ''), 'page.rsc');
+    const candidateRsc2 = path.join(ROOT_DIR, rawRoute.replace(/^\//, '') + '.rsc');
+    const candidateRsc3 = path.join(ROOT_DIR, pathname.replace(/^\//, ''));
     if (fs.existsSync(candidateRsc1)) {
       return serveFileWithRange(req, res, candidateRsc1, MIME_TYPES['.rsc']);
     }
@@ -180,41 +142,40 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // 2. Try direct file match in SITE_DIR
-  let directPath = path.join(SITE_DIR, pathname.replace(/^\//, ''));
+  // 2. Direct file or route match in ROOT_DIR
+  let directPath = path.join(ROOT_DIR, pathname.replace(/^\//, ''));
 
-  // If path is root
+  // Root path
   if (pathname === '/' || pathname === '') {
-    if (isRscRequest && fs.existsSync(path.join(SITE_DIR, 'index.rsc'))) {
-      return serveFileWithRange(req, res, path.join(SITE_DIR, 'index.rsc'), MIME_TYPES['.rsc']);
+    if (isRscRequest && fs.existsSync(path.join(ROOT_DIR, 'index.rsc'))) {
+      return serveFileWithRange(req, res, path.join(ROOT_DIR, 'index.rsc'), MIME_TYPES['.rsc']);
     }
-    const indexPath = path.join(SITE_DIR, 'index.html');
+    const indexPath = path.join(ROOT_DIR, 'index.html');
     if (fs.existsSync(indexPath)) {
       return serveFileWithRange(req, res, indexPath, 'text/html; charset=utf-8');
     }
   }
 
-  // If it's a known page route (e.g. /puppies, /faq, /happy-families, /puppies/maltipoo-max-male)
-  const dirOfRoute = path.join(SITE_DIR, pathname.replace(/^\//, ''));
-  if (fs.existsSync(dirOfRoute) && fs.statSync(dirOfRoute).isDirectory()) {
+  // If it's a known page route directory (e.g. /puppies, /faq, /puppies/maltipoo-max-male)
+  if (fs.existsSync(directPath) && fs.statSync(directPath).isDirectory()) {
     if (isRscRequest) {
-      const rscFile = path.join(dirOfRoute, 'page.rsc');
+      const rscFile = path.join(directPath, 'page.rsc');
       if (fs.existsSync(rscFile)) {
         return serveFileWithRange(req, res, rscFile, MIME_TYPES['.rsc']);
       }
     }
-    const htmlFile = path.join(dirOfRoute, 'index.html');
+    const htmlFile = path.join(directPath, 'index.html');
     if (fs.existsSync(htmlFile)) {
       return serveFileWithRange(req, res, htmlFile, 'text/html; charset=utf-8');
     }
   }
 
-  // If direct file exists and is a file
+  // If direct file exists
   if (fs.existsSync(directPath) && fs.statSync(directPath).isFile()) {
     return serveFileWithRange(req, res, directPath, getContentType(directPath));
   }
 
-  // Also check if .html extension was omitted
+  // Check if .html extension was omitted
   const htmlPathCandidate = directPath + '.html';
   if (fs.existsSync(htmlPathCandidate) && fs.statSync(htmlPathCandidate).isFile()) {
     if (isRscRequest) {
@@ -226,36 +187,10 @@ const server = http.createServer(async (req, res) => {
     return serveFileWithRange(req, res, htmlPathCandidate, 'text/html; charset=utf-8');
   }
 
-  // 3. Fallback proxy for any missing static asset (under _next, media, brand, cursor, etc.)
-  if (pathname.startsWith('/_next/') || pathname.startsWith('/media/') || pathname.startsWith('/brand/') || pathname.startsWith('/cursor/')) {
-    try {
-      const remoteUrl = 'https://puppy.instabizweb.com' + req.url;
-      console.log(`[Proxy Asset] Fetching missing asset from remote: ${remoteUrl}`);
-      const remoteRes = await fetch(remoteUrl);
-      if (remoteRes.ok) {
-        const buffer = Buffer.from(await remoteRes.arrayBuffer());
-        const targetDir = path.dirname(directPath);
-        if (!fs.existsSync(targetDir)) {
-          fs.mkdirSync(targetDir, { recursive: true });
-        }
-        fs.writeFileSync(directPath, buffer);
-        const cType = remoteRes.headers.get('content-type') || getContentType(directPath);
-        res.writeHead(200, {
-          'Content-Type': cType,
-          'Content-Length': buffer.length,
-          'Access-Control-Allow-Origin': '*'
-        });
-        return res.end(buffer);
-      }
-    } catch (err) {
-      console.warn(`[Proxy Asset Error] ${pathname}:`, err.message);
-    }
-  }
-
   // 3. Fallback to homepage for SPA routing if HTML is requested
   const acceptsHtml = (req.headers.accept || '').includes('text/html');
   if (acceptsHtml) {
-    const indexPath = path.join(SITE_DIR, 'index.html');
+    const indexPath = path.join(ROOT_DIR, 'index.html');
     if (fs.existsSync(indexPath)) {
       return serveFileWithRange(req, res, indexPath, 'text/html; charset=utf-8');
     }
@@ -270,10 +205,10 @@ const server = http.createServer(async (req, res) => {
 function startServer(port) {
   server.listen(port, HOST, () => {
     console.log('\n=============================================================');
-    console.log(`🐾 TeddyPups U.A.E. is running locally!`);
+    console.log(`🐾 TeddyPups U.A.E. Static Preview Server`);
     console.log(`🌐 Local URL: http://localhost:${port}/`);
-    console.log(`📁 Serving from: ${SITE_DIR}`);
-    console.log(`⚡ Zero setup required - all assets, pages, & images ready!`);
+    console.log(`📁 Serving from: ${ROOT_DIR}`);
+    console.log(`⚡ Production-ready static codebase (Netlify compatible)`);
     console.log('=============================================================\n');
   });
 
