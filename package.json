@@ -1,0 +1,17 @@
+{
+  "name": "teddypups-uae-local",
+  "version": "1.0.0",
+  "description": "TeddyPups U.A.E. local web server",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "sync": "node scripts/sync_all.js"
+  },
+  "keywords": [
+    "teddypups",
+    "local-server"
+  ],
+  "author": "",
+  "license": "ISC"
+}
