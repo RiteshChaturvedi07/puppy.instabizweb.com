@@ -3,6 +3,13 @@
 [build]
   publish = "."
 
+# Redirect Next.js image optimizer requests to direct static assets
+[[redirects]]
+  from = "/_next/image"
+  query = { url = ":url" }
+  to = "/:url"
+  status = 302
+
 # Pretty URL routing for primary pages
 [[redirects]]
   from = "/puppies"

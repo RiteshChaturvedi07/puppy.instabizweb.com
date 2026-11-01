@@ -74,8 +74,8 @@ function cleanHtmlContent(content) {
   // Also clean any leftover &amp;w=... or &w=... on media/brand URLs
   cleaned = cleaned.replace(/(\/(?:media|brand)\/[^"'\s>]+?)(?:&amp;|&)w=\d+[^"'\s>]*/gi, '$1');
 
-  // Also clean srcset attributes with /_next/image
-  cleaned = cleaned.replace(/srcset=["']([^"']+)["']/g, (match, srcsetValue) => {
+  // Also clean srcset and srcSet attributes with /_next/image
+  cleaned = cleaned.replace(/(srcSet|srcset)=["']([^"']+)["']/gi, (match, attrName, srcsetValue) => {
     const cleanedSrcset = srcsetValue.split(',').map(entry => {
       const parts = entry.trim().split(/\s+/);
       let url = parts[0];
@@ -87,7 +87,7 @@ function cleanHtmlContent(content) {
       }
       return parts.length > 1 ? `${url} ${parts[1]}` : url;
     }).join(', ');
-    return `srcset="${cleanedSrcset}"`;
+    return `${attrName}="${cleanedSrcset}"`;
   });
 
   // 5. Ensure main.js script is included before </body>

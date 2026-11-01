@@ -8,13 +8,72 @@
 (function () {
   'use strict';
 
+  // Run image sanitizer immediately to intercept early renders
+  initImageSanitizer();
+
   document.addEventListener('DOMContentLoaded', () => {
+    initImageSanitizer();
     initMobileMenu();
     initFaqAccordion();
     initPuppiesFilter();
     initPuppyDetailGallery();
     initSmoothCurtainLinks();
   });
+
+  /* ==========================================================================
+     0. Static Image Sanitizer (Fixes static hosting image display)
+     ========================================================================== */
+  function sanitizeImage(img) {
+    if (!img) return;
+    const currentSrc = img.getAttribute('src');
+    if (currentSrc && currentSrc.includes('/_next/image')) {
+      const match = currentSrc.match(/[?&]url=([^&]+)/);
+      if (match) {
+        const decoded = decodeURIComponent(match[1]);
+        img.setAttribute('src', decoded);
+      }
+    }
+    const currentSrcset = img.getAttribute('srcset') || img.getAttribute('srcSet');
+    if (currentSrcset && currentSrcset.includes('/_next/image')) {
+      const cleaned = currentSrcset.replace(/\/_next\/image\?url=([^&\s]+)[^,\s]*/g, function (_, u) {
+        return decodeURIComponent(u);
+      });
+      img.setAttribute('srcset', cleaned);
+    }
+  }
+
+  function initImageSanitizer() {
+    document.querySelectorAll('img').forEach(sanitizeImage);
+
+    if (window.MutationObserver && !window._tpImgObserverActive) {
+      window._tpImgObserverActive = true;
+      const observer = new MutationObserver(function (mutations) {
+        for (let i = 0; i < mutations.length; i++) {
+          const m = mutations[i];
+          if (m.type === 'childList') {
+            for (let j = 0; j < m.addedNodes.length; j++) {
+              const node = m.addedNodes[j];
+              if (node.nodeType === 1) {
+                if (node.tagName === 'IMG') sanitizeImage(node);
+                else if (typeof node.querySelectorAll === 'function') {
+                  node.querySelectorAll('img').forEach(sanitizeImage);
+                }
+              }
+            }
+          } else if (m.type === 'attributes' && m.target.tagName === 'IMG') {
+            sanitizeImage(m.target);
+          }
+        }
+      });
+
+      observer.observe(document.documentElement, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['src', 'srcset', 'srcSet']
+      });
+    }
+  }
 
   /* ==========================================================================
      1. Mobile Navigation Menu
